@@ -1,35 +1,51 @@
-"""Your tests. Each milestone in README.md gets one here: write the test first, then make it pass.
 
-They start skipped. Remove the `skip` line as you work on each milestone.
-"""
-import pytest
+from app.core import (
+    milestone_1,
+    milestone_2,
+    milestone_3,
+    milestone_4,
+    milestone_5
+)
 
-# Milestone 1: Generate a synthetic dataset of shopping baskets with planted itemsets.
-@pytest.mark.skip(reason="remove this line when you start milestone 1")
+
 def test_milestone_1():
-    raise NotImplementedError("write the test for milestone 1")
+    baskets = milestone_1(n=100)
+    assert len(baskets) == 100
+    assert all(isinstance(b, list) for b in baskets)
 
 
-# Milestone 2: Implement the n-gram model to predict next items in a basket.
-@pytest.mark.skip(reason="remove this line when you start milestone 2")
 def test_milestone_2():
-    raise NotImplementedError("write the test for milestone 2")
+    baskets = milestone_1(n=100)
+    model = milestone_2(baskets)
+    assert len(model.counts) > 0
 
 
-# Milestone 3: Pretrain a small language model (like in the drill) on the basket sequences.
-@pytest.mark.skip(reason="remove this line when you start milestone 3")
 def test_milestone_3():
-    raise NotImplementedError("write the test for milestone 3")
+    baskets = milestone_1(n=100)
+    model = milestone_3(baskets)
+    assert len(model.vocab) > 0
 
 
-# Milestone 4: Evaluate both models using next-item prediction metrics (e.g., accuracy, rank).
-@pytest.mark.skip(reason="remove this line when you start milestone 4")
 def test_milestone_4():
-    raise NotImplementedError("write the test for milestone 4")
+    baskets = milestone_1(n=100)
+    results = milestone_4(baskets)
+    assert "N-Gram" in results
+    assert "Small Language Model" in results
 
 
-# Milestone 5: Present a comparison of the models' performance.
-@pytest.mark.skip(reason="remove this line when you start milestone 5")
 def test_milestone_5():
-    raise NotImplementedError("write the test for milestone 5")
+    results = {
+        "N-Gram": {
+            "accuracy": 0.8,
+            "mrr": 0.9,
+            "total_predictions": 20
+        },
+        "Small Language Model": {
+            "accuracy": 0.85,
+            "mrr": 0.92,
+            "total_predictions": 20
+        }
+    }
 
+    df = milestone_5(results)
+    assert len(df) == 2
