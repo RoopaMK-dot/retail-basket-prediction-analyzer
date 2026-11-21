@@ -184,18 +184,40 @@ def evaluate(model, baskets):
     }
 
 
+
+class MostFrequentItemModel:
+    """Baseline: recommend the most frequently purchased items."""
+
+    def __init__(self):
+        self.frequencies = Counter()
+
+    def train(self, baskets):
+        for basket in baskets:
+            self.frequencies.update(basket)
+        return self
+
+    def predict(self, context, top_k=5):
+        already_selected = set(context)
+
+        return [
+            item for item, count in self.frequencies.most_common()
+            if item not in already_selected
+        ][:top_k]
+
 def milestone_4(baskets=None):
-    """Evaluate both prediction models."""
+    """Evaluate baseline, N-gram and neural models."""
     baskets = baskets or milestone_1()
 
     split = int(len(baskets) * 0.8)
     train_data = baskets[:split]
     test_data = baskets[split:]
 
+    baseline = MostFrequentItemModel().train(train_data)
     ngram = milestone_2(train_data)
     neural = milestone_3(train_data)
 
     return {
+        "Most Frequent Item (Baseline)": evaluate(baseline, test_data),
         "N-Gram": evaluate(ngram, test_data),
         "Small Language Model": evaluate(neural, test_data)
     }
