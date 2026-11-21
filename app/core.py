@@ -2,191 +2,236 @@
 import random
 import math
 from collections import Counter, defaultdict
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 
-ITEMS = [
-    "Milk", "Bread", "Butter", "Eggs", "Cheese",
-    "Rice", "Dal", "Sugar", "Tea", "Coffee",
-    "Chips", "Juice", "Biscuits", "Soap", "Shampoo"
-]
+# --------------------------------------------------
+# MILESTONE 1: GENERATE RETAIL BASKET DATASET
+# --------------------------------------------------
 
-PLANTED_PATTERNS = [
-    ["Milk", "Bread", "Butter"],
-    ["Rice", "Dal"],
-    ["Tea", "Biscuits"],
-    ["Bread", "Eggs"],
-    ["Coffee", "Sugar"]
-]
-
-
-def milestone_1(n=1000, seed=42):
+def milestone_1(num_baskets=1000, seed=42):
     """Generate synthetic retail shopping baskets."""
-    rng = random.Random(seed)
+
+    random.seed(seed)
+
+    products = [
+        "Bread", "Milk", "Butter", "Eggs", "Cheese",
+        "Rice", "Sugar", "Tea", "Coffee", "Biscuits",
+        "Apples", "Bananas", "Chips", "Juice", "Soap"
+    ]
+
     baskets = []
 
-    for _ in range(n):
-        basket = set()
+    for _ in range(num_baskets):
+        basket = random.sample(products, random.randint(2, 6))
 
-        if rng.random() < 0.7:
-            basket.update(rng.choice(PLANTED_PATTERNS))
+        # Add some frequently occurring product combinations.
+        if random.random() < 0.4:
+            basket = list(set(basket + ["Bread", "Milk"]))
 
-        for item in ITEMS:
-            if rng.random() < 0.12:
-                basket.add(item)
-
-        if not basket:
-            basket.add(rng.choice(ITEMS))
+        if random.random() < 0.3:
+            basket = list(set(basket + ["Tea", "Biscuits"]))
 
         baskets.append(sorted(basket))
 
-    Path("data").mkdir(exist_ok=True)
-    pd.DataFrame({
-        "basket_id": range(1, n + 1),
-        "items": [", ".join(b) for b in baskets]
-    }).to_csv("data/baskets.csv", index=False)
+    df = pd.DataFrame({
+        "basket_id": range(1, len(baskets) + 1),
+        "items": [",".join(basket) for basket in baskets]
+    })
+
+    df.to_csv("data/baskets.csv", index=False)
+
+    print(f"Generated {len(baskets)} baskets.")
 
     return baskets
 
 
+# --------------------------------------------------
+# N-GRAM MODEL
+# --------------------------------------------------
+
 class NGramModel:
-    """Frequency-based next-item prediction model."""
+    """Predict the next item using previous basket items."""
 
     def __init__(self):
-        self.counts = defaultdict(Counter)
+        self.ngrams = defaultdict(Counter)
 
     def train(self, baskets):
         for basket in baskets:
-            for i in range(1, len(basket)):
+            for i in range(len(basket)):
                 context = tuple(basket[:i])
-                self.counts[context][basket[i]] += 1
-
-    def predict(self, context, top_k=5):
-        context = tuple(context)
-
-        while context:
-            if context in self.counts:
-                return [
-                    item for item, _ in
-                    self.counts[context].most_common(top_k)
-                ]
-            context = context[1:]
-
-        return []
-
-
-def milestone_2(baskets=None):
-    """Train and return an N-gram model."""
-    baskets = baskets or milestone_1()
-    model = NGramModel()
-    model.train(baskets)
-    return model
-
-
-class SmallLanguageModel:
-    """A lightweight neural next-item language model."""
-
-    def __init__(self, vocab, seed=42):
-        self.vocab = list(vocab)
-        self.index = {w: i for i, w in enumerate(self.vocab)}
-        self.rng = np.random.default_rng(seed)
-
-        size = len(self.vocab)
-        self.embedding = self.rng.normal(0, 0.1, (size, 16))
-        self.W = self.rng.normal(0, 0.1, (16, size))
-        self.b = np.zeros(size)
-
-    def train(self, baskets, epochs=35, lr=0.05):
-        examples = []
-
-        for basket in baskets:
-            for i in range(1, len(basket)):
-                context = basket[:i]
-                target = self.index[basket[i]]
-                x = np.mean(
-                    [self.embedding[self.index[w]] for w in context],
-                    axis=0
-                )
-                examples.append((x, target))
-
-        for _ in range(epochs):
-            for x, target in examples:
-                logits = x @ self.W + self.b
-                logits -= np.max(logits)
-                probs = np.exp(logits)
-                probs /= probs.sum()
-
-                probs[target] -= 1
-
-                grad_w = np.outer(x, probs)
-                grad_b = probs
-
-                self.W -= lr * grad_w
-                self.b -= lr * grad_b
+                next_item = basket[i]
+                self.ngrams[context][next_item] += 1
 
         return self
 
     def predict(self, context, top_k=5):
-        valid = [w for w in context if w in self.index]
+        context = tuple(context)
 
-        if not valid:
-            return self.vocab[:top_k]
+        # Find the longest available context.
+        while context not in self.ngrams and context:
+            context = context[1:]
 
-        x = np.mean(
-            [self.embedding[self.index[w]] for w in valid],
-            axis=0
-        )
+        if context not in self.ngrams:
+            return []
 
-        logits = x @ self.W + self.b
-        order = np.argsort(logits)[::-1]
+        return [
+            item
+            for item, count in self.ngrams[context].most_common(top_k)
+            if item not in context
+        ]
 
-        return [self.vocab[i] for i in order[:top_k]]
 
+def milestone_2(baskets=None):
+    """Train the N-Gram model."""
 
-def milestone_3(baskets=None):
-    """Train the small neural language model."""
     baskets = baskets or milestone_1()
-    vocab = sorted(set(item for b in baskets for item in b))
 
-    model = SmallLanguageModel(vocab)
+    model = NGramModel()
     model.train(baskets)
+
     return model
 
 
-def evaluate(model, baskets):
-    """Calculate next-item prediction metrics."""
-    correct = 0
-    reciprocal_rank = 0
-    total = 0
+# --------------------------------------------------
+# SMALL NEURAL LANGUAGE MODEL
+# --------------------------------------------------
 
-    for basket in baskets:
-        for i in range(1, len(basket)):
-            context = basket[:i]
-            actual = basket[i]
+class SmallLanguageModel:
+    """A lightweight neural next-item prediction model."""
 
-            predictions = model.predict(context, top_k=5)
+    def __init__(self, embedding_dim=16, learning_rate=0.05, epochs=30):
+        self.embedding_dim = embedding_dim
+        self.learning_rate = learning_rate
+        self.epochs = epochs
 
-            total += 1
+        self.items = []
+        self.item_to_id = {}
+        self.embeddings = None
+        self.W = None
+        self.b = None
 
-            if predictions and predictions[0] == actual:
-                correct += 1
+    def train(self, baskets):
+        self.items = sorted(set(
+            item for basket in baskets for item in basket
+        ))
 
-            if actual in predictions:
-                reciprocal_rank += 1 / (predictions.index(actual) + 1)
+        self.item_to_id = {
+            item: index for index, item in enumerate(self.items)
+        }
 
-    return {
-        "accuracy": correct / total if total else 0,
-        "mrr": reciprocal_rank / total if total else 0,
-        "total_predictions": total
-    }
+        vocab_size = len(self.items)
+
+        if vocab_size == 0:
+            return self
+
+        rng = np.random.default_rng(42)
+
+        self.embeddings = rng.normal(
+            0, 0.1, (vocab_size, self.embedding_dim)
+        )
+
+        self.W = rng.normal(
+            0, 0.1, (self.embedding_dim, vocab_size)
+        )
+
+        self.b = np.zeros(vocab_size)
+
+        training_examples = []
+
+        for basket in baskets:
+            for i in range(1, len(basket)):
+                context = basket[:i]
+                target = basket[i]
+
+                training_examples.append((context, target))
+
+        for _ in range(self.epochs):
+            for context, target in training_examples:
+
+                context_ids = [
+                    self.item_to_id[item]
+                    for item in context
+                    if item in self.item_to_id
+                ]
+
+                if not context_ids:
+                    continue
+
+                x = np.mean(self.embeddings[context_ids], axis=0)
+
+                target_id = self.item_to_id[target]
+
+                logits = np.dot(x, self.W) + self.b
+
+                logits -= np.max(logits)
+
+                probabilities = np.exp(logits)
+                probabilities /= np.sum(probabilities)
+
+                probabilities[target_id] -= 1
+
+                grad_W = np.outer(x, probabilities)
+
+                self.W -= self.learning_rate * grad_W
+                self.b -= self.learning_rate * probabilities
+
+        return self
+
+    def predict(self, context, top_k=5):
+        if self.W is None or len(self.items) == 0:
+            return []
+
+        context_ids = [
+            self.item_to_id[item]
+            for item in context
+            if item in self.item_to_id
+        ]
+
+        if not context_ids:
+            return []
+
+        x = np.mean(self.embeddings[context_ids], axis=0)
+
+        scores = np.dot(x, self.W) + self.b
+
+        ranked_ids = np.argsort(scores)[::-1]
+
+        selected = set(context)
+
+        predictions = []
+
+        for index in ranked_ids:
+            item = self.items[index]
+
+            if item not in selected:
+                predictions.append(item)
+
+            if len(predictions) == top_k:
+                break
+
+        return predictions
 
 
+def milestone_3(baskets=None):
+    """Train the Small Language Model."""
+
+    baskets = baskets or milestone_1()
+
+    model = SmallLanguageModel()
+    model.train(baskets)
+
+    return model
+
+
+# --------------------------------------------------
+# BASELINE MODEL
+# --------------------------------------------------
 
 class MostFrequentItemModel:
-    """Baseline: recommend the most frequently purchased items."""
+    """Recommend the most frequently purchased items."""
 
     def __init__(self):
         self.frequencies = Counter()
@@ -194,21 +239,87 @@ class MostFrequentItemModel:
     def train(self, baskets):
         for basket in baskets:
             self.frequencies.update(basket)
+
         return self
 
     def predict(self, context, top_k=5):
         already_selected = set(context)
 
         return [
-            item for item, count in self.frequencies.most_common()
+            item
+            for item, count in self.frequencies.most_common()
             if item not in already_selected
         ][:top_k]
 
+
+# --------------------------------------------------
+# EVALUATION FUNCTION
+# --------------------------------------------------
+
+
+def evaluate(model, test_baskets):
+    """Evaluate models using Accuracy@1 and Mean Reciprocal Rank."""
+
+    correct = 0
+    reciprocal_rank_sum = 0
+    total_predictions = 0
+
+    for basket in test_baskets:
+
+        for i in range(1, len(basket)):
+
+            # Use previous items as context.
+            context = basket[:i]
+
+            # The next item is the actual target.
+            actual_item = basket[i]
+
+            # Predict the next item.
+            predictions = model.predict(context, top_k=5)
+
+            total_predictions += 1
+
+            if predictions:
+
+                # Accuracy@1
+                if predictions[0] == actual_item:
+                    correct += 1
+
+                # Mean Reciprocal Rank
+                if actual_item in predictions:
+                    rank = predictions.index(actual_item) + 1
+                    reciprocal_rank_sum += 1 / rank
+
+    accuracy = (
+        correct / total_predictions
+        if total_predictions > 0 else 0
+    )
+
+    mrr = (
+        reciprocal_rank_sum / total_predictions
+        if total_predictions > 0 else 0
+    )
+
+    return {
+        "accuracy": accuracy,
+        "mrr": mrr,
+        "total_predictions": total_predictions
+    }
+
+# --------------------------------------------------
+# MILESTONE 4: EVALUATE ALL THREE MODELS
+# --------------------------------------------------
+
 def milestone_4(baskets=None):
-    """Evaluate baseline, N-gram and neural models."""
-    baskets = baskets or milestone_1()
+    """Evaluate baseline, N-Gram and neural models."""
+
+    baskets = baskets if baskets is not None else milestone_1()
+
+    if len(baskets) < 2:
+        raise ValueError("At least two baskets are required.")
 
     split = int(len(baskets) * 0.8)
+
     train_data = baskets[:split]
     test_data = baskets[split:]
 
@@ -221,18 +332,21 @@ def milestone_4(baskets=None):
         "N-Gram": evaluate(ngram, test_data),
         "Small Language Model": evaluate(neural, test_data)
     }
+# --------------------------------------------------
+# MILESTONE 5: MODEL COMPARISON
+# --------------------------------------------------
 
+def milestone_5(results):
+    """Compare models and save results to CSV."""
 
-def milestone_5(results=None):
-    """Compare models and save results."""
-    results = results or milestone_4()
+    import pandas as pd
 
-    df = pd.DataFrame(results).T
+    df = pd.DataFrame.from_dict(results, orient="index")
+
     print("\n========== MODEL COMPARISON ==========")
-    print(df.to_string())
+    print(df)
     print("======================================")
 
-    Path("results").mkdir(exist_ok=True)
     df.to_csv("results/model_comparison.csv")
 
     return df

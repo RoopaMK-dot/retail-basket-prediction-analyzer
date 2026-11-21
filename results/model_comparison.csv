@@ -1,3 +1,4 @@
 ,accuracy,mrr,total_predictions
-N-Gram,0.8,0.9,20.0
-Small Language Model,0.85,0.92,20.0
+Most Frequent Item (Baseline),0.7,0.8,20
+N-Gram,0.8,0.9,20
+Small Language Model,0.85,0.92,20
